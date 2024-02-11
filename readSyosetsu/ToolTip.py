@@ -11,7 +11,6 @@ class ToolTip(object):
         self.x = self.y = 0
 
     def showtip(self, text):
-        self.widget.configure(background="white")
         "Display text in tooltip window"
         self.text = text
         if self.tipwindow or not self.text:
@@ -28,7 +27,6 @@ class ToolTip(object):
         label.pack(ipadx=1)
 
     def hidetip(self):
-        self.widget.configure(background="lightgray")
         tw = self.tipwindow
         self.tipwindow = None
         if tw:

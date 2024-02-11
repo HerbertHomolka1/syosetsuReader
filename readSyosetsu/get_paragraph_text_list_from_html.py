@@ -16,5 +16,4 @@ def get_paragraph_text_list_from_html(html_code):
             i+=1
         else:
             l_tags_exist = False
-    print(paragraph_text_list)
     return paragraph_text_list

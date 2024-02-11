@@ -11,6 +11,9 @@ from tkinter import ttk
 from sqlalchemy import create_engine, Column, Integer, String, Sequence
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import os
+from janome.tokenizer import Tokenizer
+import janome
 
 Base = declarative_base()
 
@@ -19,9 +22,12 @@ class UrlDatabase(Base):
     id = Column(Integer, Sequence('url_id_seq'), primary_key=True)
     novel_name = Column(String(255))
     novel_url = Column(String(255))
+    chapter = Column(Integer())
+    index = Column(Integer())
 
 # Replace 'sqlite:///your_database.db' with the actual path to your SQLite database file
-database_url = 'sqlite:///readSyosetsu/novel_database.db'
+database_url = 'sqlite:///novel_database.db'
+
 engine = create_engine(database_url, echo=True)
 
 # Automatically create the database tables
@@ -30,17 +36,25 @@ Base.metadata.create_all(engine)
 # Create a session factory
 Session = sessionmaker(bind=engine)
 
-# def get_url(url):
-#     return  f'https://ncode.syosetu.com/n3704he/{chapter}'
+def get_url(url):
+    global chapter
+    if url[-1] != '/':
+        url = url+'/'
+    print(chapter)
+    return  f'{url}{chapter}'
 
 def get_paragraph_text_list():
-    return get_syosetsu_paragraph_list_from_url(url)
+    r = get_syosetsu_paragraph_list_from_url(get_url(url))
+    print('get_paragraph_text_list',len(r))
+    return r
 
 def update_all_labels():
+        global paragraph_text_list
         paragraph_text_list = get_paragraph_text_list()
+        print('update_all_labels: ', len(paragraph_text_list))
         text = paragraph_text_list[index]
         translation_label.config(text=get_romaji(text))
-        chapter_label.config(text=f'{index}/{len(paragraph_text_list)}\nchapter: {chapter}', background='lightgray') 
+        chapter_label.config(text=f'{index}/{len(paragraph_text_list)-1}\nchapter: {chapter}', background='lightgray') 
         # chapter_label.config(text=f'chapter: {chapter}')
         remove_all_frames()
         create_paragraph_label(text)
@@ -58,6 +72,7 @@ def create_paragraph_label(text):
     frame = tk.Frame(root, padx=50, pady=10, background='lightgray')
     frame.pack()
     token_list = tokenize_japanese_sentence(text)
+
     for token in token_list:
         word_label = tk.Label(frame, text=token, font=font_style, background='lightgray')
         word_label.pack(side="left", padx=2)
@@ -85,7 +100,7 @@ def on_l_key(event):
     chapter += 1
     index = 0
     update_all_labels()
-
+    print(len(paragraph_text_list),chapter)
 
 def on_t_key(event):
     global index
@@ -105,31 +120,42 @@ def remove_all_frames():
 
 def on_k_key(event):
     global index
+    global paragraph_text_list
+    print('on_k_key',len(paragraph_text_list))
     if index < len(paragraph_text_list)-1:
         index+=1
         text = paragraph_text_list[index]
         translation_label.config(text=get_romaji(text))
         remove_all_frames()
         create_paragraph_label(text)
-        chapter_label.config(text=f'{index}/{len(paragraph_text_list)}\nchapter: {chapter}',background='lightgray') 
+        chapter_label.config(text=f'{index}/{len(paragraph_text_list)-1}\nchapter: {chapter}',background='lightgray') 
 
 def on_j_key(event):
     global index
+    global paragraph_text_list
     if index >=1:
         index-=1
         text = paragraph_text_list[index]
         translation_label.config(text=get_romaji(text))
         remove_all_frames()
         create_paragraph_label(text)
-        chapter_label.config(text=f'{index}/{len(paragraph_text_list)}\nchapter: {chapter}', background='lightgray') 
+        chapter_label.config(text=f'{index}/{len(paragraph_text_list)-1}\nchapter: {chapter}', background='lightgray') 
 
 
-def create_gui(URL):
+def create_gui(URL,CHAPTER,INDEX):
+    print('create_gui: CHAPTER,INDEX ',CHAPTER,INDEX)
     global url 
     url = URL
     global translation_label
     global chapter_label
     global root
+    global paragraph_text_list
+    global chapter
+    chapter = int(CHAPTER)
+    global index
+    index = int(INDEX)
+
+    print('create_gui: chapter,index ',url,chapter,index)
 
     paragraph_text_list = get_paragraph_text_list()
     initial_paragraph_text = paragraph_text_list[index]
@@ -152,7 +178,7 @@ def create_gui(URL):
 
     create_paragraph_label(initial_paragraph_text)
     
-    chapter_label = tk.Label(root, text=f'{index}/{len(paragraph_text_list)}\nchapter: {chapter}', font=font_size_translation, background='lightgray')
+    chapter_label = tk.Label(root, text=f'{index}/{len(paragraph_text_list)-1}\nchapter: {chapter}', font=font_size_translation, background='lightgray')
     
     # chapter_label = tk.Label(root, text=f'chapter: {chapter}', font=font_size_translation, background='lightgray')
     chapter_label.place(relx=1, rely=1, anchor='se')
@@ -168,28 +194,42 @@ def create_gui(URL):
     root.bind('l',on_l_key)
     root.bind('<Right>',on_l_key)
 
+
+    def on_closing():
+        with Session() as session:
+            entry_to_modify = session.query(UrlDatabase).filter_by(novel_url=URL).first()
+            entry_to_modify.chapter = chapter
+            entry_to_modify.index = index
+            session.commit()
+            quit()
+
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+
     root.mainloop()
 
 def read_selected_novel():
     selected_item = novels_tree.selection()
+
     if selected_item:
         values = novels_tree.item(selected_item, "values")
-        create_gui(values[1]) # ('villainess healer', 'https://ncode.syosetu.com/n3704he/1')
+        print('read_selected_novel: values ',values)
+        print('read_selected_novel: chapter,index',values[2],values[3])
+        create_gui(values[1],values[2],values[3]) # ('villainess healer', 'https://ncode.syosetu.com/n3704he/1', 2nd chapter, 41st paragraph)
     else:
         print("Choose something.")
 
-def add_novel_to_database(novel_name,novel_url):
+def add_novel_to_database(novel_name,novel_url, chapter, index):
     if novel_name and novel_url:
-        add_novel(novel_name,novel_url)
+        add_novel(novel_name,novel_url, chapter, index)
         with Session() as session:
-            new_novel = UrlDatabase(novel_url=novel_url, novel_name=novel_name )
+            new_novel = UrlDatabase(novel_url=novel_url, novel_name=novel_name, chapter = chapter, index=index  )
             session.add(new_novel)
             session.commit()
     else:
         print("Please enter both novel name and URL.")
 
-def add_novel(novel_name,novel_url):
-        novels_tree.insert("", "end", values=(novel_name, novel_url))
+def add_novel(novel_name,novel_url,chapter=1, index=0):
+        novels_tree.insert("", "end", values=(novel_name, novel_url,chapter,index))
         # Clear the entry fields after adding a novel
         novel_name_entry.delete(0, 'end')
         novel_url_entry.delete(0, 'end')
@@ -197,7 +237,7 @@ def add_novel(novel_name,novel_url):
 def read_novel_urls_from_database():
     with Session() as session:
         novels = session.query(UrlDatabase).all()
-        novels = [(novel.novel_name,novel.novel_url) for novel in novels]
+        novels = [(novel.novel_name,novel.novel_url,novel.chapter, novel.index) for novel in novels]
         return novels
 
 def create_novel_selection():
@@ -217,24 +257,28 @@ def create_novel_selection():
     novel_url_entry = Entry(root1, bd=1, width = 80)
     novel_url_entry.grid(row=1, column=1)
 
-    add_novel_button = Button(root1, text="Add Novel", width=105, height=1, bd=1,command=lambda: add_novel_to_database(novel_name_entry.get(),novel_url_entry.get()))
+    add_novel_button = Button(root1, text="Add Novel", width=105, height=1, bd=1,command=lambda: add_novel_to_database(novel_name_entry.get(),novel_url_entry.get(),1,0))
     add_novel_button.grid(row=2, column=0, columnspan=2,pady=4)
 
     style = ttk.Style()
     style.configure("Treeview", rowheight=40)  
 
 
-    novels_tree = ttk.Treeview(root1, columns=("Novel Name", "Novel URL"), show="headings")
+    novels_tree = ttk.Treeview(root1, columns=("Novel Name", "Novel URL",'Chapter','Paragraph'), show="headings")
     novels_tree.heading("Novel Name", text="Novel Name")
     novels_tree.heading("Novel URL", text="Novel URL")
-    novels_tree.column("Novel Name", width=600)  
-    novels_tree.column("Novel URL", width=1000)  
+    novels_tree.heading("Chapter", text="Chapter")
+    novels_tree.heading("Paragraph", text="Paragraph")
+    novels_tree.column("Novel Name", width=400)  
+    novels_tree.column("Novel URL", width=900)  
+    novels_tree.column("Chapter", width=150)  
+    novels_tree.column("Paragraph", width=150)  
     novels_tree.grid(row=3, column=0, columnspan=2)
     
     novels_in_database = read_novel_urls_from_database()
 
     for novel in novels_in_database:
-        add_novel(novel[0],novel[1])
+        add_novel(novel[0],novel[1],novel[2],novel[3])
 
     read_novel_button = Button(root1, text="Read Novel", width=105, height=2, bd=1,command=read_selected_novel)
     read_novel_button.grid(row=4, column=0, columnspan=2,pady=8)
