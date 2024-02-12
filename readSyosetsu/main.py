@@ -249,7 +249,7 @@ def create_novel_selection():
     root1.title("Syosetsu Reader")
 
     Label(text="Name of your novel", width=25).grid(row=0, column=0)
-    Label(text="URL to Ch1 of your novel", width=25).grid(row=1, column=0)
+    Label(text="URL to your novel", width=25).grid(row=1, column=0)
 
     novel_name_entry = Entry(root1, bd=1, width = 80)
     novel_name_entry.grid(row=0, column=1)
@@ -285,5 +285,4 @@ def create_novel_selection():
 
     root1.mainloop()
 
-# create_gui()
 create_novel_selection()
