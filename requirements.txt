@@ -1,0 +1,6 @@
+setuptools
+janome
+sqlalchemy
+beautifulsoup4
+pykakasi
+deep-translator
